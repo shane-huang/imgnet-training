@@ -1,6 +1,22 @@
 require 'cunn'
 local ffi=require 'ffi'
 
+function deepCopy(tbl)
+   -- creates a copy of a network with new modules and the same tensors
+   local copy = {}
+   for k, v in pairs(tbl) do
+      if type(v) == 'table' then
+         copy[k] = deepCopy(v)
+      else
+         copy[k] = v
+      end
+   end
+   if torch.typename(tbl) then
+      torch.setmetatable(copy, torch.typename(tbl))
+   end
+   return copy
+end
+
 function makeDataParallel(model, nGPU)
    if nGPU > 1 then
       print('converting module to nn.DataParallelTable')
@@ -29,7 +45,9 @@ end
 
 function saveDataParallel(filename, model)
    if torch.type(model) == 'nn.DataParallelTable' then
-      torch.save(filename, cleanDPT(model))
+      model = cleanDPT(model)
+      model = deepCopy(model):float():clearState()
+      torch.save(filename, model)
    elseif torch.type(model) == 'nn.Sequential' then
       local temp_model = nn.Sequential()
       for i, module in ipairs(model.modules) do
@@ -39,6 +57,7 @@ function saveDataParallel(filename, model)
             temp_model:add(module)
          end
       end
+      temp_model = deepCopy(temp_model):float():clearState()
       torch.save(filename, temp_model)
    else
       error('This saving function only works with Sequential or DataParallelTable modules.')
