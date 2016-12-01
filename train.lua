@@ -89,22 +89,6 @@ function train()
    -- set the dropouts to training mode
    model:training()
 
-   -- optimize memory
-   -- omit the dataparallel table
-   if torch.type(model) == 'nn.DataParallelTable' then
-      optmodel = model:get(1)
-   else
-      optmodel = model
-   end
-
-   local optnet = require 'optnet'
-   -- local imsize = opt.dataset == 'imagenet' and 224 or 32
-   local imsize = opt.imageCrop
-   local sampleInput = torch.zeros(4,3,imsize,imsize):cuda()
-   print('Start optimizing memory...')
-   optnet.optimizeMemory(optmodel,sampleInput,{inplace=false,mode='training'})
-   print('Done optimizing memory.')
-
    local tm = torch.Timer()
    top1_epoch = 0
    loss_epoch = 0
@@ -142,9 +126,10 @@ function train()
 
    -- clear the intermediate states in the model before saving to disk
    -- this saves lots of disk space
-   model:clearState()
-   saveDataParallel(paths.concat(opt.save, 'model_' .. epoch .. '.t7'), model) -- defined in util.lua
-   torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
+   -- model:clearState()
+   --modelToSave = deepCopy(model):float():clearState()
+   --saveDataParallel(paths.concat(opt.save, 'model_' .. epoch .. '.t7'), modelToSave) -- defined in util.lua
+   --torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
 end -- of train()
 -------------------------------------------------------------------------------------------
 -- GPU inputs (preallocate)
