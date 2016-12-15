@@ -10,6 +10,7 @@ testLogger = optim.Logger(paths.concat(opt.save, 'test.log'))
 
 local batchNumber
 local top1_center, loss
+local top1,top5
 local timer = torch.Timer()
 
 function test()
@@ -25,6 +26,8 @@ function test()
 
    top1_center = 0
    loss = 0
+   top1 = 0
+   top5 = 0
    for i = 1, math.ceil(nTest/opt.batchSize) do -- nTest is set in 1_data.lua
       local indexStart = (i-1) * opt.batchSize + 1
       local indexEnd = math.min(nTest, indexStart + opt.batchSize - 1)
@@ -53,6 +56,12 @@ function test()
                           .. 'accuracy [Center](%%):\t top-1 %.2f\t ',
                        epoch, timer:time().real, loss, top1_center))
 
+   top1 = top1 * 100 / nTest
+   top5 = top5 * 100 / nTest
+   print(string.format('Epoch: [NEW][%d][TESTING SUMMARY] Total Time(s): %.2f \t'
+                          .. 'average loss (per batch): %.2f \t '
+                          .. 'accuracy [Center](%%):\t top-1 %.2f\t top-5 %.2f\t ',
+                    epoch, timer:time().real, loss, top1, top5))
    print('\n')
 
 
@@ -79,6 +88,17 @@ function testBatch(inputsCPU, labelsCPU)
       local g = labelsCPU[i]
       if pred_sorted[i][1] == g then top1_center = top1_center + 1 end
    end
+
+   -- Find which predictions match the target --> resnet style of topn
+   local correct = pred_sorted:eq(
+      labelsCPU:long():view(pred:size(1), 1):expandAs(pred))
+   -- Top-1 score
+   top1 = top1 + correct:narrow(2, 1, 1):sum()
+   -- Top-5 score, if there are at least 5 classes
+   local len = math.min(5, correct:size(2))
+   top5 = top5 + correct:narrow(2, 1, len):sum()
+ 
+
    if batchNumber % 1024 == 0 then
       print(('Epoch: Testing [%d][%d/%d]'):format(epoch, batchNumber, nTest))
    end
