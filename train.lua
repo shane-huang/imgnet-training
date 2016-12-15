@@ -43,9 +43,11 @@ end
 --    diff to apply to optimState,
 --    true IFF this is the first epoch of a new regime
 local function paramsForEpoch(epoch)
+
     if opt.LR ~= 0.0 then -- if manually specified
         return { }
     end
+
     local regimes = {
         -- start, end,    LR,   WD,
         {  1,     18,   1e-2,   5e-4, },
@@ -61,6 +63,34 @@ local function paramsForEpoch(epoch)
         end
     end
 end
+
+local function triangular2(iteration,stepSize,minLR,maxLR)
+    -- for learning rate
+    local cycle=math.floor(1 + iteration/(2*stepSize))
+    local x = math.abs(iteration/stepSize - 2*cycle + 1)
+    local lr = minLR + (maxLR - minLR) * math.min(1,math.max(0,(1-x)/math.pow(2,cycle-1)))
+    return lr
+end
+
+local function paramsForBatch(epoch,batchNumber,opt)
+    if opt.CLR == 'none' then
+        return { },false
+    elseif opt.CLR ~= 'triangular2' then
+        print('unrecoginized clr policy' .. opt.CLR)
+        return { },false
+    end
+
+    -- use clr learning rate, calculate the global iteration first
+    if epoch >= opt.startLrPolicy then
+        local itr = (epoch-opt.startLrPolicy)*opt.epochSize+batchNumber
+        local lr = triangular2(itr,opt.stepSize,opt.minLR,opt.maxLR)
+        return { learningRate=lr },true
+    else
+        return { },false
+    end
+
+end
+
 
 -- 2. Create loggers.
 trainLogger = optim.Logger(paths.concat(opt.save, 'train.log'))
@@ -143,6 +173,12 @@ local parameters, gradParameters = model:getParameters()
 
 -- 4. trainBatch - Used by train() to train a single batch after the data is loaded.
 function trainBatch(inputsCPU, labelsCPU)
+   --change learning rate on a batch basis
+   local params, newRegime = paramsForBatch(epoch,batchNumber,opt)
+   if newRegime then
+      optimState.learningRate = params.learningRate
+   end
+  
    cutorch.synchronize()
    collectgarbage()
    local dataLoadingTime = dataTimer:time().real
@@ -179,7 +215,7 @@ function trainBatch(inputsCPU, labelsCPU)
       top1 = top1 * 100 / opt.batchSize;
    end
    -- Calculate top-1 error, and print information
-   print(('Epoch: [%d][%d/%d]\tTime %.3f Err %.4f Top1-%%: %.2f LR %.0e DataLoadingTime %.3f'):format(
+   print(('Epoch: [%d][%d/%d]\tTime %.3f Err %.4f Top1-%%: %.2f LR %.4f DataLoadingTime %.3f'):format(
           epoch, batchNumber, opt.epochSize, timer:time().real, err, top1,
           optimState.learningRate, dataLoadingTime))
 
